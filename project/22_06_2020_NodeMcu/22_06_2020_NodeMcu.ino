@@ -4,6 +4,7 @@
 #include <ESP8266HTTPClient.h>
 #include <NTPClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
 
 // wifi access
 char* ssid = "Redmi";
@@ -23,33 +24,97 @@ int monthDay = 0;
 String currentMonthName = "";
 int currentYear = 0;
 
-void setup() {
+//moisture variable
+// we have to take the values of the sensor for the calculation it's needed the airValue and the WaterValue as fix parameter
+const int AirValue = 620;   //you need to replace this value with Value_1
+const int WaterValue = 270;
+
+int soilMoistureValue = 0;
+int soilMoisturePercentage = 0;
+int soilTemperatureValue = 0;
+int soilTemperaturePercentage = 0;
+const int SLAVE_ADDRESS = 42;
+
+// various commands we might send
+enum {
+  CMD_ID = 1,
+  CMD_READ_A0  = 2,
+  CMD_READ_D8 = 3
+};
+
+void sendCommand (const byte cmd, const int responseSize)
+{
+  Wire.beginTransmission (SLAVE_ADDRESS);
+  Wire.write (cmd);
+  Wire.endTransmission ();
+
+  if (Wire.requestFrom (SLAVE_ADDRESS, responseSize) == 0)
+  {
+    // handle error - no response
+    Serial.print("no response");
+  }
+  else
+  {
+    // data received, now use Wire.read to obtain it
+  }
+}  // end of sendCommand
+
+void setup ()
+{
+  Serial.begin(9600);
+  Wire.begin(D1, D2);
+
+  sendCommand (CMD_ID, 1);
+
   // wifi connection
   WiFi.begin(ssid, password);
-  Serial.begin(9600);
+
   while (WiFi.status() != WL_CONNECTED)
   {
     Serial.print(".");
     delay(500);
   }
-  Serial.print("No no no");
   // time
   timeClient.begin();
   timeClient.setTimeOffset(7200);
-}
 
-void loop() {
+}  // end of setup
+
+void loop()
+{
+  int val;
+  StaticJsonBuffer<300> jsonBuffer;
+  //JsonObject& root = jsonBuffer.parseObject(Serial);
+  JsonObject& root = jsonBuffer.createObject();
+  
+  sendCommand (CMD_READ_A0, 2);
+  val = Wire.read ();
+  val <<= 8;
+  val |= Wire.read ();
+  Serial.print ("Value of A0: ");
+  soilMoistureValue = val;
+   soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
+  Serial.println (val, DEC);
+
+  sendCommand (CMD_READ_D8, 3);
+  val = Wire.read ();
+  Serial.print ("Value of D8: ");
+  Serial.println (val, DEC);
+
+  delay (500);
   // check WiFi connection
-  if (WiFi.status() == WL_CONNECTED && Serial.available()) {
+  if (WiFi.status() == WL_CONNECTED) {
     //calling function for request and save date and time
     timeFunction();
 
-    StaticJsonBuffer<300> jsonBuffer;
-    JsonObject& root = jsonBuffer.parseObject(Serial);
+
     root["timestamp"] = dateAndTime;
+    root["sensorType"] = "moisture";
+    root["moistureValue"] = soilMoistureValue;
+    root["moisturePercentage"] = soilMoisturePercentage;
     String databuf;
     root.printTo(databuf);
-    
+
     //Declare object of class HTTPClient
     HTTPClient http;
     http.begin(serverName);
@@ -65,6 +130,18 @@ void loop() {
     http.end();
   }
 }
+
+/********************************************/
+/* old Arduino part
+  // Memory pool for JSON object tree. Size in bytes
+  StaticJsonBuffer<300> jsonBuffer;   //Memory pool
+  JsonObject&  root = jsonBuffer.createObject();
+  root["sensorType"] = "moisture";
+  root["moistureValue"] = soilMoistureValue;
+  root["moisturePercentage"] = soilMoisturePercentage;
+*/
+/********************************************/
+
 
 void timeFunction() {
   // update the code for not have to many error
