@@ -5,6 +5,7 @@
 #include <NTPClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
+#include "CTBot.h"
 
 // wifi access
 char* ssid = "Redmi";
@@ -33,6 +34,7 @@ int soilMoistureValue = 0;
 int soilMoisturePercentage = 0;
 int soilTemperatureValue = 0;
 int soilTemperaturePercentage = 0;
+
 const int SLAVE_ADDRESS = 42;
 
 // various commands we might send
@@ -41,6 +43,11 @@ enum {
   CMD_READ_A0  = 2,
   CMD_READ_D8 = 3
 };
+
+//Telegram connection
+CTBot myBot;
+String token = "1176180431:AAEQfRsYrJMLfx3QDsC3h--WqL3xnUQpdBc";   // REPLACE myToken WITH YOUR TELEGRAM BOT TOKEN
+uint8_t led = 2;            // the onboard ESP8266 LED.
 
 void sendCommand (const byte cmd, const int responseSize)
 {
@@ -78,6 +85,21 @@ void setup ()
   timeClient.begin();
   timeClient.setTimeOffset(7200);
 
+  // connect the ESP8266 to the desired access point
+  myBot.wifiConnect(ssid, password);
+
+  // set the telegram bot token
+  myBot.setTelegramToken(token);
+
+  // check if all things are ok
+  if (myBot.testConnection())
+    Serial.println("\ntestConnection OK");
+  else
+    Serial.println("\ntestConnection NOK");
+
+  // set the pin connected to the LED to act as output pin
+  pinMode(led, OUTPUT);
+  digitalWrite(led, HIGH); // turn off the led (inverted logic!)
 }  // end of setup
 
 void loop()
@@ -86,14 +108,14 @@ void loop()
   StaticJsonBuffer<300> jsonBuffer;
   //JsonObject& root = jsonBuffer.parseObject(Serial);
   JsonObject& root = jsonBuffer.createObject();
-  
+
   sendCommand (CMD_READ_A0, 2);
   val = Wire.read ();
   val <<= 8;
   val |= Wire.read ();
   Serial.print ("Value of A0: ");
   soilMoistureValue = val;
-   soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
+  soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
   Serial.println (val, DEC);
 
   sendCommand (CMD_READ_D8, 3);
@@ -129,6 +151,30 @@ void loop()
     // Disconnect
     http.end();
   }
+
+  // a variable to store telegram message data
+  TBMessage msg;
+
+  // if there is an incoming message...
+  if (myBot.getNewMessage(msg)) {
+
+    if (msg.text.equalsIgnoreCase("LIGHT ON")) {              // if the received message is "LIGHT ON"...
+      digitalWrite(led, LOW);                               // turn on the LED (inverted logic!)
+      myBot.sendMessage(msg.sender.id, "Light is now ON");  // notify the sender
+    }
+    else if (msg.text.equalsIgnoreCase("LIGHT OFF")) {        // if the received message is "LIGHT OFF"...
+      digitalWrite(led, HIGH);                              // turn off the led (inverted logic!)
+      myBot.sendMessage(msg.sender.id, "Light is now OFF"); // notify the sender
+    }
+    else {                                                    // otherwise...
+      // generate the message for the sender
+      String reply;
+      reply = (String)"Welcome " + msg.sender.username + (String)". Try LIGHT ON or LIGHT OFF.";
+      myBot.sendMessage(msg.sender.id, reply);             // and send it
+    }
+  }
+  // wait 500 milliseconds
+  delay(500);
 }
 
 /********************************************/
