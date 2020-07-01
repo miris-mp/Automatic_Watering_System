@@ -5,12 +5,17 @@
 #include <NTPClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-#include "CTBot.h"
+//#include "CTBot.h"
 
 // wifi access
 char* ssid = "Redmi";
 char* password = "p4ssw0rd";
-char* serverName = "http://miris.pythonanywhere.com/postjson";
+// Domain Name with full URL Path for HTTP POST Request
+const char* serverName = "http://api.thingspeak.com/update";
+// Service API Key
+String apiKey = "UXYEVVEWKC4DAGIP";  
+//char* serverName = "http://miris.pythonanywhere.com/postjson";
+
 
 //The udp library class
 WiFiUDP ntpUDP;
@@ -40,15 +45,16 @@ const int SLAVE_ADDRESS = 42;
 // various commands we might send
 enum {
   CMD_ID = 1,
-  CMD_READ_A0  = 2,
-  CMD_READ_D8 = 3
+  CMD_READ_A0  = 2
+  //CMD_READ_D8 = 3
 };
 
 //Telegram connection
+/*
 CTBot myBot;
 String token = "1176180431:AAEQfRsYrJMLfx3QDsC3h--WqL3xnUQpdBc";   // REPLACE myToken WITH YOUR TELEGRAM BOT TOKEN
 uint8_t led = 2;            // the onboard ESP8266 LED.
-
+*/
 void sendCommand (const byte cmd, const int responseSize)
 {
   Wire.beginTransmission (SLAVE_ADDRESS);
@@ -84,7 +90,7 @@ void setup ()
   // time
   timeClient.begin();
   timeClient.setTimeOffset(7200);
-
+/*
   // connect the ESP8266 to the desired access point
   myBot.wifiConnect(ssid, password);
 
@@ -100,35 +106,37 @@ void setup ()
   // set the pin connected to the LED to act as output pin
   pinMode(led, OUTPUT);
   digitalWrite(led, HIGH); // turn off the led (inverted logic!)
+  */
 }  // end of setup
 
 void loop()
 {
-  int val;
   StaticJsonBuffer<300> jsonBuffer;
   //JsonObject& root = jsonBuffer.parseObject(Serial);
   JsonObject& root = jsonBuffer.createObject();
 
   sendCommand (CMD_READ_A0, 2);
-  val = Wire.read ();
-  val <<= 8;
-  val |= Wire.read ();
+  soilMoistureValue = Wire.read ();
+  soilMoistureValue <<= 8;
+  soilMoistureValue |= Wire.read ();
   Serial.print ("Value of A0: ");
-  soilMoistureValue = val;
+  Serial.println (soilMoistureValue, DEC);
+  
   soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
-  Serial.println (val, DEC);
+  
 
-  sendCommand (CMD_READ_D8, 3);
+  //sendCommand (CMD_READ_D8, 3);
+  /*
   val = Wire.read ();
   Serial.print ("Value of D8: ");
   Serial.println (val, DEC);
+  */
 
   delay (500);
   // check WiFi connection
   if (WiFi.status() == WL_CONNECTED) {
     //calling function for request and save date and time
     timeFunction();
-
 
     root["timestamp"] = dateAndTime;
     root["sensorType"] = "moisture";
@@ -140,12 +148,22 @@ void loop()
     //Declare object of class HTTPClient
     HTTPClient http;
     http.begin(serverName);
-    //content-type header
+/*
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.POST(String(databuf));
     String payload = http.getString();
+    */
+    //content-type header
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+     // Data to send with HTTP POST
+      String httpRequestData = "api_key=" + apiKey + "&field1=" + String(soilMoistureValue) + "&field2=" + String(soilMoisturePercentage);       
+      
+      // Send HTTP POST request
+      int httpResponseCode = http.POST(httpRequestData);
+      
+    int httpCode = http.POST(String(databuf));
+    String payload = http.getString();
 
-    Serial.println(payload);
     Serial.println(httpCode);   //Print HTTP return code
     Serial.println(payload);    //Print request response payload
     // Disconnect
@@ -153,7 +171,7 @@ void loop()
   }
 
   // a variable to store telegram message data
-  TBMessage msg;
+ /* TBMessage msg;
 
   // if there is an incoming message...
   if (myBot.getNewMessage(msg)) {
@@ -173,6 +191,7 @@ void loop()
       myBot.sendMessage(msg.sender.id, reply);             // and send it
     }
   }
+  */
   // wait 500 milliseconds
   delay(500);
 }
