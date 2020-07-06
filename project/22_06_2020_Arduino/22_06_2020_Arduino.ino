@@ -21,7 +21,7 @@ enum {
 };
 
 
-const int waterDuration = 60;
+const int waterDuration = 5000;
 char command;
 
 void setup()
@@ -128,6 +128,7 @@ void requestEvent ()
       break;
     // send temperature value
     case CMD_TURN_ON_A2:
+    Serial.println("TUTTOOOO on");
       solenoidValveOn();
       delay(waterDuration);
       solenoidValveOff();
