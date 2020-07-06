@@ -46,10 +46,10 @@ const int SLAVE_ADDRESS = 42;
 
 // various commands we might send
 enum {
-  CMD_ID = 1,
+    CMD_ID = 1,
   CMD_READ_A0  = 2,
-  CMD_TURN_ON_A2 = 3
-  //CMD_READ_D8 = 3
+  CMD_READ_D2 = 3,
+  CMD_TURN_ON_A2 = 4
 };
 
 //Telegram connection
@@ -115,26 +115,24 @@ void setup ()
 
 void loop()
 {
+   int val;
   StaticJsonBuffer<300> jsonBuffer;
   //JsonObject& root = jsonBuffer.parseObject(Serial);
   JsonObject& root = jsonBuffer.createObject();
 
-  sendCommand (CMD_READ_A0, 2);
-  soilMoistureValue = Wire.read ();
-  soilMoistureValue <<= 8;
-  soilMoistureValue |= Wire.read ();
+ sendCommand (CMD_READ_A0, 2);
+  val = Wire.read ();
+  val <<= 8;
+  val |= Wire.read ();
   Serial.print ("Value of A0: ");
-  Serial.println (soilMoistureValue, DEC);
-
-  // calculate moisture percentage
+  soilMoistureValue = val;
   soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
+  Serial.println (val, DEC);
 
-  //sendCommand (CMD_READ_D8, 3);
-  /*
-    val = Wire.read ();
-    Serial.print ("Value of D8: ");
-    Serial.println (val, DEC);
-  */
+  sendCommand (CMD_READ_D2, 1);
+  val = Wire.read ();
+  Serial.print ("Value of D2: ");
+  Serial.println (val, DEC);
 
   // check WiFi connection
   if (WiFi.status() == WL_CONNECTED) {

@@ -153,18 +153,13 @@ void printAddress(DeviceAddress deviceAddress) {
     Serial.print(deviceAddress[i], HEX);
   }
 }
-void printTemperature(DeviceAddress deviceAddress) {
-  tempC = sensor.getTempC(deviceAddress);
-  Serial.print("Temp: "); Serial.print(tempC);
-  Serial.print(" C; ");
-  Serial.print(DallasTemperature::toFahrenheit(tempC));
-  Serial.print(" F");
-}
+
 void printResolution(DeviceAddress deviceAddress) {
   Serial.print("Resolution: ");
   Serial.println(sensor.getResolution(deviceAddress));
 }
 void printData(DeviceAddress deviceAddress) {
-  printTemperature(deviceAddress); Serial.print(" ;  Device: ");
-  printAddress(deviceAddress); Serial.println();
+  tempC = sensor.getTempC(deviceAddress);
+ 
+  printAddress(deviceAddress);
 }
