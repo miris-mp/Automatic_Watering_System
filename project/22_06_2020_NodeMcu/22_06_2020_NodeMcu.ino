@@ -14,7 +14,6 @@ char* password = "p4ssw0rd";
 
 char* serverName = "http://salahezz.pythonanywhere.com/postjson";
 
-const int SOLENOID_VALVE_PIN = D4;
 //The udp library class
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
@@ -39,8 +38,8 @@ const int WaterValue = 270;
 const int optimalWaterValue = 20;
 
 /*
-const int dry = 520;
-const int wet = 270;
+  const int dry = 520;
+  const int wet = 270;
 */
 int soilMoisturePercentage = 0;
 
@@ -51,14 +50,16 @@ enum {
   CMD_ID = 1,
   CMD_READ_A0  = 2,
   CMD_READ_D2 = 3,
-  CMD_TURN_ON_A2 = 4
+  CMD_TURN_ON_SOLENOID = 4,
+  CMD_ON = 5,
+  CMD_OFF = 6
 };
 
 void setup ()
 {
   Serial.begin(9600);
   Wire.begin(D1, D2);
-  pinMode(SOLENOID_VALVE_PIN, OUTPUT);
+
   sendCommand (CMD_ID, 1);
 
   // wifi connection
@@ -79,7 +80,10 @@ void setup ()
 
   int soilMoistureValue,
       tempCelsius;
-
+  // check WiFi connection
+  if (WiFi.status() == WL_CONNECTED) {
+    //calling function for request and save date and time
+    timeFunction();
   // stack with fixed size
   StaticJsonBuffer<300> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
@@ -102,11 +106,18 @@ void setup ()
 
   // we set a fixed time where we are sure that the sun is alredy set
   // you cannot give water to the plants when the sun is not set because otherwise the water will
-  if (hour < 5 || hour > 21) {
+  if (hour <= 4 || hour >= 21) {
     // if the moisture is lower than the optimal value of water we have to give the water
     if (soilMoisturePercentage < optimalWaterValue) {
       // tell to Arduino to turn on the valve
-      sendCommand(CMD_TURN_ON_A2, 3);
+      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
+      Wire.write(CMD_ON);        // send value_pot
+      Wire.endTransmission();
+      delay(3000);
+      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
+      Wire.write(CMD_OFF);        // send value_pot
+      Wire.endTransmission();
+
     } else {
       Serial.println("The water level are good");
     }
@@ -115,20 +126,20 @@ void setup ()
   else {
     // if the moisture is lower than the optimal value of water we have to give the water
     if (soilMoisturePercentage < optimalWaterValue) {
-      digitalWrite(SOLENOID_VALVE_PIN, HIGH);      //Switch Solenoid ON
-      delay(5000);                          //Wait 1 Second
-      digitalWrite(SOLENOID_VALVE_PIN, LOW);       //Switch Solenoid OFF
-      delay(5000);
+      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
+      Wire.write(CMD_ON);        // send value_pot
+      Wire.endTransmission();
+      delay(9000);
+      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
+      Wire.write(CMD_OFF);        // send value_pot
+      Wire.endTransmission();
     } else {
       Serial.println("The water level are good");
     }
   }
   delay(500);
 
-  // check WiFi connection
-  if (WiFi.status() == WL_CONNECTED) {
-    //calling function for request and save date and time
-    timeFunction();
+
     root["timestamp"] = dateAndTime;
     root["moist"] = soilMoisturePercentage;
     root["temp"] = tempCelsius;
@@ -152,7 +163,7 @@ void setup ()
   Serial.println("I'm awake, but I'm going into deep sleep mode for 29 minutes");
   ESP.deepSleep(5e6);
   //ESP.deepSleep(1,8e6);
-}  
+}
 
 void loop()
 {
