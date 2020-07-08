@@ -1,17 +1,20 @@
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#define ONE_WIRE_BUS 2 // Data wire is plugged into D2 pin
+// Pin of temperature sensor
+#define TEMPERATURE_PIN 2 
+// The temperature precision can be between 9 and 12
 #define TEMPERATURE_PRECISION 9
 
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensor(&oneWire);
+OneWire oneWire(TEMPERATURE_PIN);
+DallasTemperature temp(&oneWire);
 DeviceAddress one;
 
 const byte MY_ADDRESS = 85;
 const int SOLENOID_VALVE_PIN = 8;
-//const int waterPumpPin = A3;
+
 int tempC;
+
 // various commands we might get
 enum {
   CMD_ID = 1,
@@ -20,8 +23,8 @@ enum {
   CMD_TURN_ON_A2 = 4
 };
 
-
-const int waterDuration = 5000;
+// milliseconds when the solenoid water should provide water to the plant
+const int waterDuration = 10000;
 char command;
 
 void setup()
@@ -29,73 +32,84 @@ void setup()
   command = 0;
 
   // set the output pin to turn on the transistor
-  pinMode(SOLENOID_VALVE_PIN, OUTPUT);
-  /*
-    pinMode (8, INPUT);
-    digitalWrite (8, HIGH);  // enable pull-up
-    pinMode (A0, INPUT);
-    digitalWrite (A0, LOW);  // disable pull-up
-  */
   Wire.begin (MY_ADDRESS);
-  Wire.onReceive (receiveEvent);  // interrupt handler for incoming messages
-  Wire.onRequest (requestEvent);  // interrupt handler for when data is wanted
+  Wire.onReceive (receiveEvent);  
+  // interrupt handler for incoming messages
+  // interrupt handler for when data is wanted
+  Wire.onRequest (requestEvent);  
 
-  pinMode(8, OUTPUT);
   Serial.begin(9600);
+  pinMode(SOLENOID_VALVE_PIN, OUTPUT);
   //temperature
-  Serial.println("Dallas Temperature IC Control Library Demo");
-  sensor.begin();
-  Serial.print("Locating devices...");
-  Serial.print("Found ");
-  Serial.print(sensor.getDeviceCount(), DEC);
-  Serial.println(" devices.");
-  Serial.print("Parasite power is: ");
+  
+  temp.begin();
+  Serial.print(temp.getDeviceCount(), DEC);
 
-  if (sensor.isParasitePowerMode()) {
+  if (temp.isParasitePowerMode()) {
     Serial.println("ON");
   }
   else {
     Serial.println("OFF");
   }
-  if (!sensor.getAddress(one, 0)) {
+  if (!temp.getAddress(one, 0)) {
     Serial.println("Unable to find address for Device 0");
   }
-
 
   Serial.print("Device 0 Address: ");
   printAddress(one);
   Serial.println(); Serial.print("Device 1 Address: ");
 
-  sensor.setResolution(one, TEMPERATURE_PRECISION);
+  temp.setResolution(one, TEMPERATURE_PRECISION);
 
 
   // one tab
   Serial.print("Device 0 Resolution: ");
-  Serial.print(sensor.getResolution(one), DEC);
+  Serial.print(temp.getResolution(one), DEC);
   Serial.println();
 }
 int temp;
+
 void loop()
 {
-  Serial.print("Requesting temperatures...");
-  sensor.requestTemperatures();
-  Serial.println("DONE");
-  printData(one);
-
-  delay(1000);
-  // all done by interrupts
-}  // end of loop
+  temp.requestTemperatures();
+    printData(one);
+} 
 
 void receiveEvent (int howMany)
 {
-  Serial.println("receiveEvent");
   // save the command send by NodeMCU
   command = Wire.read ();
-  Serial.println("receiveEventEnd");
-} // end of receiveEvent
+  // check if the request is the one for the solenoid valve and in that case handle here
+} 
 
+void requestEvent ()
+{
+  switch (command)
+  {
+    case CMD_ID:
+      Wire.write (0x55);
+      break;
+    case CMD_READ_A0:
+      sendSensor (A0);
+      break;  // send moisture value
+    case CMD_READ_D2:
+    temptWrite(tempC);
+    Serial.println("SII");
+      Serial.println(tempC);
+      break;
+    // send temperature value
+    case CMD_TURN_ON_A2:
+    digitalWrite(SOLENOID_VALVE_PIN, HIGH);      //Switch Solenoid ON
+  delay(5000);                          //Wait 1 Second
+  digitalWrite(SOLENOID_VALVE_PIN, LOW);  
 
-void sendSensor (const byte analogValueRead, const int num)
+      // we have to turn on the solenoid valve
+      break;
+  }  // end of switch
+
+} 
+
+void sendSensor (const byte analogValueRead)
 {
   int value = analogRead(analogValueRead);
   byte buf [2];
@@ -110,41 +124,15 @@ void temptWrite (const int num) {
 
   Wire.write (buf, 1);
 }
-void requestEvent ()
-{
-
-  switch (command)
-  {
-    case CMD_ID:
-      Wire.write (0x55);
-      break;
-    case CMD_READ_A0:
-      sendSensor (A0,tempC);
-      break;  // send moisture value
-    case CMD_READ_D2:
-    temptWrite(tempC);
-    Serial.println("SII");
-      Serial.println(tempC);
-      break;
-    // send temperature value
-    case CMD_TURN_ON_A2:
-    Serial.println("TUTTOOOO on");
-      solenoidValveOn();
-      delay(waterDuration);
-      solenoidValveOff();
-
-      // we have to turn on the solenoid valve
-      break;
-  }  // end of switch
-
-}  // end of requestEvent
 
 void solenoidValveOn() {
   digitalWrite(SOLENOID_VALVE_PIN, HIGH);
+  delay(3000);
 }
 
 void solenoidValveOff() {
   digitalWrite(SOLENOID_VALVE_PIN, LOW);
+  delay(5000);
 }
 
 
@@ -157,10 +145,10 @@ void printAddress(DeviceAddress deviceAddress) {
 
 void printResolution(DeviceAddress deviceAddress) {
   Serial.print("Resolution: ");
-  Serial.println(sensor.getResolution(deviceAddress));
+  Serial.println(temp.getResolution(deviceAddress));
 }
 void printData(DeviceAddress deviceAddress) {
-  tempC = sensor.getTempC(deviceAddress);
+  tempC = temp.getTempC(deviceAddress);
  
   printAddress(deviceAddress);
 }

@@ -14,14 +14,14 @@ char* password = "p4ssw0rd";
 
 char* serverName = "http://salahezz.pythonanywhere.com/postjson";
 
-
+const int SOLENOID_VALVE_PIN = D4;
 //The udp library class
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 String dateAndTime = "";
 int months[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 String day = "";
-char daysOfTheWeek[7][12]= {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 String nameDay;
 int hour = 0;
 int minute = 0;
@@ -36,15 +36,13 @@ const int AirValue = 620;   //you need to replace this value with Value_1
 const int WaterValue = 270;
 
 // the optimal water value is checked with the percentage one
-const int waterLowerBound = 20;
-const int waterUpperBound = 25;
+const int optimalWaterValue = 20;
+
+/*
 const int dry = 520;
 const int wet = 270;
-
-int soilMoistureValue = 0;
+*/
 int soilMoisturePercentage = 0;
-int soilTemperatureValue = 0;
-int soilTemperaturePercentage = 0;
 
 const int SLAVE_ADDRESS = 85;
 
@@ -56,19 +54,11 @@ enum {
   CMD_TURN_ON_A2 = 4
 };
 
-//Telegram connection
-/*
-  CTBot myBot;
-  String token = "1176180431:AAEQfRsYrJMLfx3QDsC3h--WqL3xnUQpdBc";   // REPLACE myToken WITH YOUR TELEGRAM BOT TOKEN
-  uint8_t led = 2;            // the onboard ESP8266 LED.
-*/
-
-
 void setup ()
 {
   Serial.begin(9600);
   Wire.begin(D1, D2);
-
+  pinMode(SOLENOID_VALVE_PIN, OUTPUT);
   sendCommand (CMD_ID, 1);
 
   // wifi connection
@@ -82,71 +72,59 @@ void setup ()
   }
   // time
   timeClient.begin();
+  // UTC +2
   timeClient.setTimeOffset(7200);
 
-  /*
-    // connect the ESP8266 to the desired access point
-    myBot.wifiConnect(ssid, password);
 
-    // set the telegram bot token
-    myBot.setTelegramToken(token);
 
-    // check if all things are ok
-    if (myBot.testConnection())
-      Serial.println("\ntestConnection OK");
-    else
-      Serial.println("\ntestConnection NOK");
-
-    // set the pin connected to the LED to act as output pin
-    pinMode(led, OUTPUT);
-    digitalWrite(led, HIGH); // turn off the led (inverted logic!)
-  */
-}  // end of setup
-
-void loop()
-{
-  int val,
-  tempCelsius;
+  int soilMoistureValue,
+      tempCelsius;
 
   // stack with fixed size
   StaticJsonBuffer<300> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
 
   delay(500);
- sendCommand (CMD_READ_A0, 2);
-  val = Wire.read ();
-  val <<= 8;
-  val |= Wire.read ();
+  // ask the value of the moisture sensor that is connected to A0 pin in Arduino
+  sendCommand (CMD_READ_A0, 2);
+  soilMoistureValue = Wire.read ();
+  soilMoistureValue <<= 8;
+  soilMoistureValue |= Wire.read ();
   Serial.print ("Mositure value: ");
-  soilMoistureValue = val;
   soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
   Serial.println (soilMoisturePercentage, DEC);
 
+  // ask the value of the temperature sensor that is connected to D2 pin in Arduino
   sendCommand (CMD_READ_D2, 1);
   tempCelsius = Wire.read ();
   Serial.print ("Temperature value: ");
   Serial.println (tempCelsius, DEC);
-  
-  Serial.println("acqus ");
-  Serial.println(hour);
-  if (hour > 21) {
-    Serial.println("Rancore ");
+
+  // we set a fixed time where we are sure that the sun is alredy set
+  // you cannot give water to the plants when the sun is not set because otherwise the water will
+  if (hour < 5 || hour > 21) {
     // if the moisture is lower than the optimal value of water we have to give the water
-    if (soilMoisturePercentage < waterLowerBound) {
-      Serial.println("Canta ");
+    if (soilMoisturePercentage < optimalWaterValue) {
       // tell to Arduino to turn on the valve
       sendCommand(CMD_TURN_ON_A2, 3);
     } else {
       Serial.println("The water level are good");
     }
   }
-  // if the moisture is not lower than the lower bound tell the water value is okay
-   else {
-      Serial.println("It's not time to give water");
+  // if the sun is still not set we cannot check the moisture level
+  else {
+    // if the moisture is lower than the optimal value of water we have to give the water
+    if (soilMoisturePercentage < optimalWaterValue) {
+      digitalWrite(SOLENOID_VALVE_PIN, HIGH);      //Switch Solenoid ON
+      delay(5000);                          //Wait 1 Second
+      digitalWrite(SOLENOID_VALVE_PIN, LOW);       //Switch Solenoid OFF
+      delay(5000);
+    } else {
+      Serial.println("The water level are good");
     }
-  
+  }
   delay(500);
- 
+
   // check WiFi connection
   if (WiFi.status() == WL_CONNECTED) {
     //calling function for request and save date and time
@@ -160,17 +138,25 @@ void loop()
     //Declare object of class HTTPClient
     HTTPClient http;
     http.begin(serverName);
-//content-type header
+    //content-type header
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.POST(String(databuf));
     String payload = http.getString();
 
     Serial.println(httpCode);   //Print HTTP return code
     Serial.println(payload);    //Print request response payload
-    Serial.println(dateAndTime);
     // Disconnect
     http.end();
-  } 
+  }
+
+  Serial.println("I'm awake, but I'm going into deep sleep mode for 29 minutes");
+  ESP.deepSleep(5e6);
+  //ESP.deepSleep(1,8e6);
+}  
+
+void loop()
+{
+
 }
 
 void sendCommand (const byte cmd, const int responseSize)
@@ -184,7 +170,7 @@ void sendCommand (const byte cmd, const int responseSize)
     // handle error - no response
     Serial.print("no response");
   }
-}  
+}
 
 void timeFunction() {
   // update the code for not have to many error
@@ -204,5 +190,5 @@ void timeFunction() {
   minute = timeClient.getMinutes();
   seconds = timeClient.getSeconds();
 
-  dateAndTime = String(nameDay+',' + hour + ':' + minute);
+  dateAndTime = String(nameDay + ',' + hour + ':' + minute);
 }
