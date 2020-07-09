@@ -9,8 +9,8 @@
 //#include "CTBot.h"
 
 // wifi access
-char* ssid = "Redmi";
-char* password = "p4ssw0rd";
+char* ssid = "SSID";
+char* password = "Password";
 
 char* serverName = "http://salahezz.pythonanywhere.com/postjson";
 
