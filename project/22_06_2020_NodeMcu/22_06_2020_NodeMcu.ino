@@ -12,7 +12,7 @@
 char* ssid = "SSID";
 char* password = "Password";
 
-char* serverName = "http://salahezz.pythonanywhere.com/postjson";
+char* serverName = "http://miris.pythonanywhere.com/postjson";
 
 //The udp library class
 WiFiUDP ntpUDP;
@@ -35,7 +35,7 @@ const int AirValue = 620;   //you need to replace this value with Value_1
 const int WaterValue = 270;
 
 // the optimal water value is checked with the percentage one
-const int optimalWaterValue = 20;
+const int optimalWaterValue = 80;
 
 /*
   const int dry = 520;
@@ -43,16 +43,17 @@ const int optimalWaterValue = 20;
 */
 int soilMoisturePercentage = 0;
 
-const int SLAVE_ADDRESS = 85;
+const int SLAVE_ADDRESS = 42;
 
+// slave didn't response
+bool resp = false;
 // various commands we might send
 enum {
   CMD_ID = 1,
   CMD_READ_A0  = 2,
   CMD_READ_D2 = 3,
-  CMD_TURN_ON_SOLENOID = 4,
-  CMD_ON = 5,
-  CMD_OFF = 6
+  CMD_ON = 4,
+  CMD_OFF = 5
 };
 
 void setup ()
@@ -81,68 +82,68 @@ void setup ()
   int soilMoistureValue,
       tempCelsius;
   // check WiFi connection
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED && resp) {
     //calling function for request and save date and time
     timeFunction();
-  // stack with fixed size
-  StaticJsonBuffer<300> jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
+    // stack with fixed size
+    StaticJsonBuffer<300> jsonBuffer;
+    JsonObject& root = jsonBuffer.createObject();
 
-  delay(500);
-  // ask the value of the moisture sensor that is connected to A0 pin in Arduino
-  sendCommand (CMD_READ_A0, 2);
-  soilMoistureValue = Wire.read ();
-  soilMoistureValue <<= 8;
-  soilMoistureValue |= Wire.read ();
-  Serial.print ("Mositure value: ");
-  soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
-  Serial.println (soilMoisturePercentage, DEC);
+    delay(500);
+    // ask the value of the moisture sensor that is connected to A0 pin in Arduino
+    sendCommand (CMD_READ_A0, 2);
+    soilMoistureValue = Wire.read ();
+    soilMoistureValue <<= 8;
+    soilMoistureValue |= Wire.read ();
+    Serial.print ("Mositure value: ");
+    soilMoisturePercentage = map(soilMoistureValue, AirValue, WaterValue, 0, 100);
+    Serial.println (soilMoisturePercentage, DEC);
 
-  // ask the value of the temperature sensor that is connected to D2 pin in Arduino
-  sendCommand (CMD_READ_D2, 1);
-  tempCelsius = Wire.read ();
-  Serial.print ("Temperature value: ");
-  Serial.println (tempCelsius, DEC);
+    // ask the value of the temperature sensor that is connected to D2 pin in Arduino
+    sendCommand (CMD_READ_D2, 1);
+    tempCelsius = Wire.read ();
+    Serial.print ("Temperature value: ");
+    Serial.println (tempCelsius, DEC);
 
-  // we set a fixed time where we are sure that the sun is alredy set
-  // you cannot give water to the plants when the sun is not set because otherwise the water will
-  if (hour <= 4 || hour >= 21) {
-    // if the moisture is lower than the optimal value of water we have to give the water
-    if (soilMoisturePercentage < optimalWaterValue) {
-      // tell to Arduino to turn on the valve
-      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
-      Wire.write(CMD_ON);        // send value_pot
-      Wire.endTransmission();
-      delay(3000);
-      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
-      Wire.write(CMD_OFF);        // send value_pot
-      Wire.endTransmission();
+    // we set a fixed time where we are sure that the sun is alredy set
+    // you cannot give water to the plants when the sun is not set because otherwise the water will
+    if (hour < 5 || hour >= 21) {
+      // if the moisture is lower than the optimal value of water we have to give the water
+      if (soilMoisturePercentage < optimalWaterValue) {
+        // tell to Arduino to turn on the valve
+        Wire.beginTransmission(SLAVE_ADDRESS); 
+        Wire.write(CMD_ON);        // send value_pot
+        Wire.endTransmission();
+        delay(14000);
+        Wire.beginTransmission(SLAVE_ADDRESS); 
+        Wire.write(CMD_OFF);        // send value_pot
+        Wire.endTransmission();
 
-    } else {
-      Serial.println("The water level are good");
+      } else {
+        Serial.println("P:No more water for me");
+      }
     }
-  }
-  // if the sun is still not set we cannot check the moisture level
-  else {
-    // if the moisture is lower than the optimal value of water we have to give the water
-    if (soilMoisturePercentage < optimalWaterValue) {
-      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
-      Wire.write(CMD_ON);        // send value_pot
-      Wire.endTransmission();
-      delay(9000);
-      Wire.beginTransmission(85); // informs the bus that we will be sending data to slave device 8 (0x08)
-      Wire.write(CMD_OFF);        // send value_pot
-      Wire.endTransmission();
-    } else {
-      Serial.println("The water level are good");
+    // if the sun is still not set we cannot check the moisture level
+    else {
+      // if the moisture is lower than the optimal value of water we have to give the water
+      if (soilMoisturePercentage < optimalWaterValue)
+        Serial.println("It's not time to give water");
     }
-  }
-  delay(500);
 
-
+    // if moisture error set the value to 120
+    if ((soilMoisturePercentage < 0) || (soilMoisturePercentage > 100)) {
+      root["moist"] = 120;
+    } else {
+      root["moist"] = soilMoisturePercentage;
+    }
+    // if the value of temperature is greater than an error occur
+    if (tempCelsius > 55) {
+      root["temp"] = 120;
+    } else {
+      root["temp"] = tempCelsius;
+    }
     root["timestamp"] = dateAndTime;
-    root["moist"] = soilMoisturePercentage;
-    root["temp"] = tempCelsius;
+
     String databuf;
     root.printTo(databuf);
 
@@ -153,22 +154,23 @@ void setup ()
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.POST(String(databuf));
     String payload = http.getString();
-
+    Serial.println();
     Serial.println(httpCode);   //Print HTTP return code
     Serial.println(payload);    //Print request response payload
     // Disconnect
     http.end();
   }
-
+  else {
+    Serial.println("no response");
+  }
+Serial.println();
   Serial.println("I'm awake, but I'm going into deep sleep mode for 29 minutes");
-  ESP.deepSleep(5e6);
-  //ESP.deepSleep(1,8e6);
+  ESP.deepSleep(300e6);
+  //ESP.deepSleep(30e6); 
 }
 
 void loop()
-{
-
-}
+{}
 
 void sendCommand (const byte cmd, const int responseSize)
 {
@@ -178,8 +180,10 @@ void sendCommand (const byte cmd, const int responseSize)
 
   if (Wire.requestFrom (SLAVE_ADDRESS, responseSize) == 0)
   {
-    // handle error - no response
-    Serial.print("no response");
+    // no response
+    resp = false;
+  } else {
+    resp = true;
   }
 }
 
