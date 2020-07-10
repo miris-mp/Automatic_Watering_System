@@ -12,7 +12,7 @@
 char* ssid = "SSID";
 char* password = "Password";
 
-char* serverName = "http://miris.pythonanywhere.com/postjson";
+char* serverName = "http://salahezz.pythonanywhere.com/postjson";
 
 //The udp library class
 WiFiUDP ntpUDP;
